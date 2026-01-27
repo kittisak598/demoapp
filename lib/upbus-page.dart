@@ -35,7 +35,7 @@ class _UpBusHomePageState extends State<UpBusHomePage> {
 
   List<Polyline> _allPolylines = []; // เก็บเส้นทางทั้งหมด 3 สาย
   List<Polyline> _displayPolylines = []; // เก็บเส้นทางที่จะแสดงผลปัจจุบัน
-  Polyline? _route1PKY;
+  Polyline? _routeNamorPKY;
 
   // --- Multi-Bus Tracking Variables ---
   StreamSubscription? _busSubscription;
@@ -67,27 +67,27 @@ class _UpBusHomePageState extends State<UpBusHomePage> {
     try {
       // โหลด 3 ไฟล์ (เปลี่ยน path ให้ตรงกับไฟล์ของคุณ)
       // 0=หน้ามอ(เขียว), 1=หอใน(แดง), 2=ICT(น้ำเงิน)
-      Polyline route1 = await _parseGeoJson(
+      Polyline routeNamor = await _parseGeoJson(
         'assets/data/bus_route1เส้นทางก่อนบ่าย2.geojson',
         const Color.fromRGBO(68, 182, 120, 1),
       );
       //เส้นทางหลังบ่ายสอง
-      _route1PKY = await _parseGeoJson(
+      _routeNamorPKY = await _parseGeoJson(
         'assets/data/bus_route1.geojson',
         const Color.fromRGBO(68, 182, 120, 1),
       );
-      Polyline route2 = await _parseGeoJson(
+      Polyline routeHornai = await _parseGeoJson(
         'assets/data/bus_route2.geojson',
         const Color.fromRGBO(255, 56, 89, 1),
       );
-      Polyline route3 = await _parseGeoJson(
+      Polyline routeICT = await _parseGeoJson(
         'assets/data/bus_route3.geojson',
         const Color.fromRGBO(17, 119, 252, 1),
       );
 
       if (!mounted) return;
       setState(() {
-        _allPolylines = [route1, route2, route3];
+        _allPolylines = [routeNamor, routeHornai, routeICT];
         _displayPolylines = _allPolylines; // เริ่มต้นแสดงทั้งหมด
       });
     } catch (e) {
@@ -138,7 +138,7 @@ class _UpBusHomePageState extends State<UpBusHomePage> {
       } else {
         // หลัง 14:00 เป็นต้นไป หรือก่อนตี 5 ใช้เส้นทางหลัก
         // หมายเหตุ: _routeNamorPKY ในที่นี้คือไฟล์ bus_route1.geojson ที่เราโหลดแยกไว้
-        currentNamor = _route1PKY ?? _allPolylines[0];
+        currentNamor = _routeNamorPKY ?? _allPolylines[0];
         print("โหมด: หลัง 14:00 (ใช้เส้นทาง bus_route1)");
       }
 
