@@ -6,8 +6,9 @@ import 'package:flutter_map/flutter_map.dart'; // ใช้ OSM
 import 'package:latlong2/latlong.dart'; // ใช้ LatLng ของ OSM
 import 'package:http/http.dart' as http;
 import 'package:projectapp/upbus-page.dart'; // ใช้ยิง API ขอเส้นทาง
-import 'models/bus_model.dart';
-import 'package:firebase_database/firebase_database.dart';
+// import 'models/bus_model.dart';
+// import 'package:firebase_database/firebase_database.dart';
+// import 'package:flutter/services.dart' show rootBundle;
 
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
@@ -32,10 +33,6 @@ class _PlanPageState extends State<PlanPage> {
     19.03011372185138,
     99.89781512200192,
   );
-
-  final DatabaseReference _gpsRef = FirebaseDatabase.instance.ref("GPS");
-  StreamSubscription? _busSubscription;
-  List<Bus> _buses = []; // ลิสต์เก็บรถบัสที่จะเอามาแสดง
 
   @override
   Widget build(BuildContext context) {
@@ -211,19 +208,6 @@ class _PlanPageState extends State<PlanPage> {
                         }).toList(),
                       );
                     },
-                  ),
-                  MarkerLayer(
-                    markers: _buses.map((bus) {
-                      return Marker(
-                        point: bus.position,
-                        width: 60, // ปรับขนาดตามความเหมาะสม
-                        height: 60,
-                        child: Image.asset(
-                          'assets/images/busiconall.png', // ใช้รูปเดียวกับหน้าหลัก
-                          fit: BoxFit.contain,
-                        ),
-                      );
-                    }).toList(),
                   ),
                 ],
               ),
