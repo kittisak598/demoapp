@@ -4,7 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart'; // ใช้ OSM
 import 'package:latlong2/latlong.dart'; // ใช้ LatLng ของ OSM
-import 'package:http/http.dart' as http; // ใช้ยิง API ขอเส้นทาง
+import 'package:http/http.dart' as http;
+import 'package:projectapp/upbus-page.dart'; // ใช้ยิง API ขอเส้นทาง
+import 'models/bus_model.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 class PlanPage extends StatefulWidget {
   const PlanPage({super.key});
@@ -29,6 +32,10 @@ class _PlanPageState extends State<PlanPage> {
     19.03011372185138,
     99.89781512200192,
   );
+
+  final DatabaseReference _gpsRef = FirebaseDatabase.instance.ref("GPS");
+  StreamSubscription? _busSubscription;
+  List<Bus> _buses = []; // ลิสต์เก็บรถบัสที่จะเอามาแสดง
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +128,103 @@ class _PlanPageState extends State<PlanPage> {
                   // Layer 2: เส้นทาง
                   PolylineLayer(polylines: _polylines),
                   // Layer 3: หมุด
-                  MarkerLayer(markers: _markers),
+                  StreamBuilder(
+                    stream: FirebaseFirestore.instance
+                        .collection('Bus stop')
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData)
+                        return const MarkerLayer(markers: []);
+                      return MarkerLayer(
+                        markers: snapshot.data!.docs.map((doc) {
+                          var data = doc.data();
+                          return Marker(
+                            point: LatLng(
+                              double.parse(data['lat'].toString()),
+                              double.parse(data['long'].toString()),
+                            ),
+                            // ขยาย width และ height เพื่อให้มีพื้นที่สำหรับแถบข้อความที่จะลอยขึ้นมา
+                            width: 200,
+                            height: 100,
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  // เมื่อกดที่ป้าย: ถ้าเป็นป้ายเดิมให้ปิด (null) ถ้าเป็นป้ายใหม่ให้เปิด (เก็บ doc.id)
+                                  selectedBusStopId =
+                                      (selectedBusStopId == doc.id)
+                                      ? null
+                                      : doc.id;
+                                });
+                              },
+                              child: Stack(
+                                alignment: Alignment.bottomCenter,
+                                children: [
+                                  // --- ส่วนที่ 1: แถบข้อความสีขาว (จะแสดงเฉพาะป้ายที่ถูกเลือก) ---
+                                  if (selectedBusStopId == doc.id)
+                                    Positioned(
+                                      top: 0, // ให้ลอยอยู่ด้านบนสุดของ Stack
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors
+                                              .white, // พื้นหลังสีขาวตามรูป
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          boxShadow: const [
+                                            BoxShadow(
+                                              color: Colors.black26,
+                                              blurRadius: 4,
+                                              offset: Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          data['name']
+                                              .toString(), // ดึงชื่อป้ายจาก Firebase
+                                          style: const TextStyle(
+                                            color: Colors.black,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                  // --- ส่วนที่ 2: ไอคอนป้ายรถเมล์ (อยู่ด้านล่างเสมอ) ---
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: Image.asset(
+                                      'assets/images/bus-stopicon.png',
+                                      width: 60,
+                                      height: 60,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                  MarkerLayer(
+                    markers: _buses.map((bus) {
+                      return Marker(
+                        point: bus.position,
+                        width: 60, // ปรับขนาดตามความเหมาะสม
+                        height: 60,
+                        child: Image.asset(
+                          'assets/images/busiconall.png', // ใช้รูปเดียวกับหน้าหลัก
+                          fit: BoxFit.contain,
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ],
               ),
             ),

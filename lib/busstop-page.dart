@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:flutter_map/flutter_map.dart';
 
 enum BusLine { yellow, red, blue }
 
@@ -63,43 +65,6 @@ class _BusStopPageState extends State<BusStopPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- ส่วนเลือกสาย ---
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: Row(
-                      children: [
-                        const Text(
-                          'สาย:',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        _lineCircle(
-                          Colors.yellow.shade600,
-                          _selectedLine == BusLine.yellow,
-                          () => _onSelectLine(BusLine.yellow),
-                        ),
-                        const SizedBox(width: 16),
-                        _lineCircle(
-                          Colors.red.shade600,
-                          _selectedLine == BusLine.red,
-                          () => _onSelectLine(BusLine.red),
-                        ),
-                        const SizedBox(width: 16),
-                        _lineCircle(
-                          Colors.blue.shade700,
-                          _selectedLine == BusLine.blue,
-                          () => _onSelectLine(BusLine.blue),
-                        ),
-                      ],
-                    ),
-                  ),
-
                   // --- Search ---
                   Padding(
                     padding: const EdgeInsets.symmetric(
