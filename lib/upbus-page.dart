@@ -648,9 +648,11 @@ class _UpBusHomePageState extends State<UpBusHomePage> {
             ),
           ),
           const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white),
-            onPressed: () => Scaffold.of(context).openEndDrawer(),
+          Builder(
+            builder: (ctx) => IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white),
+              onPressed: () => Scaffold.of(ctx).openEndDrawer(),
+            ),
           ),
         ],
       ),
