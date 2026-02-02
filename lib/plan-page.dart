@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart'; // ใช้ OSM
 import 'package:latlong2/latlong.dart'; // ใช้ LatLng ของ OSM
 import 'package:http/http.dart' as http;
 import 'package:projectapp/upbus-page.dart'; // ใช้ยิง API ขอเส้นทาง
+import 'package:flutter/services.dart' show rootBundle;
 // import 'models/bus_model.dart';
 // import 'package:firebase_database/firebase_database.dart';
 // import 'package:flutter/services.dart' show rootBundle;
@@ -27,6 +28,7 @@ class _PlanPageState extends State<PlanPage> {
   final MapController _mapController = MapController();
   List<Polyline> _polylines = []; // เส้นทางเก็บเป็น List
   List<Marker> _markers = []; // หมุดเก็บเป็น List
+  List<LatLng> _currentRoute = [];
 
   // พิกัดเริ่มต้น (ม.พะเยา)
   static const LatLng _kUniversity = LatLng(
@@ -220,7 +222,75 @@ class _PlanPageState extends State<PlanPage> {
     );
   }
 
-  // --- ฟังก์ชันหลัก: ดึงพิกัดแล้ววาดเส้นด้วย OSRM ---
+  Future<Map<int, List<LatLng>>> _loadAllRoutes() async {
+    Map<int, List<LatLng>> routes = {};
+
+    for (int i = 1; i <= 3; i++) {
+      final data = await rootBundle.loadString(
+        'assets/data/bus_route$i.geojson',
+      );
+      final json = jsonDecode(data);
+      final List coords = json['features'][0]['geometry']['coordinates'];
+
+      routes[i] = coords
+          .map<LatLng>((c) => LatLng(c[1].toDouble(), c[0].toDouble()))
+          .toList();
+    }
+
+    return routes;
+  }
+
+  List<LatLng> _mergeRoutes(Map<int, List<LatLng>> routes) {
+    final Distance d = const Distance();
+    const double CONNECT_THRESHOLD = 50; // เมตร
+
+    List<LatLng> merged = [];
+
+    for (final route in routes.values) {
+      if (merged.isEmpty) {
+        merged.addAll(route);
+        continue;
+      }
+
+      final last = merged.last;
+      final first = route.first;
+
+      // ต่อได้เฉพาะถ้าใกล้จริง
+      if (d(last, first) <= CONNECT_THRESHOLD) {
+        merged.addAll(route);
+      }
+    }
+
+    return merged;
+  }
+
+  int _nearestIndex(LatLng stop, List<LatLng> route) {
+    final Distance d = const Distance();
+    double minDist = double.infinity;
+    int nearest = 0;
+
+    for (int i = 0; i < route.length; i++) {
+      final dist = d(stop, route[i]);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = i;
+      }
+    }
+    return nearest;
+  }
+
+  double _distanceToRoute(LatLng stop, List<LatLng> route) {
+    final Distance d = const Distance();
+    double minDist = double.infinity;
+
+    for (final p in route) {
+      final dist = d(stop, p);
+      if (dist < minDist) minDist = dist;
+    }
+    return minDist;
+  }
+
+  // --- ฟังก์ชันหลัก: ดึงพิกัดแล้ววาดเส้นด้วย แทนOSRM ---
   Future<void> _onSearchAndDrawRouteOSM() async {
     if (_selectedSourceId == null || _selectedDestinationId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -229,99 +299,80 @@ class _PlanPageState extends State<PlanPage> {
       return;
     }
 
-    // 1. ดึงพิกัดจาก Firebase
-    LatLng? startCoords = await _getCoordsFromFirebase(_selectedSourceId!);
-    LatLng? endCoords = await _getCoordsFromFirebase(_selectedDestinationId!);
+    // 1) ดึงพิกัด
+    final start = await _getCoordsFromFirebase(_selectedSourceId!);
+    final end = await _getCoordsFromFirebase(_selectedDestinationId!);
+    if (start == null || end == null) return;
 
-    if (startCoords == null || endCoords == null) return;
+    // 2) โหลดทุกเส้น (3 สาย)
+    final routes = await _loadAllRoutes();
 
-    // 2. เรียก OSRM API เพื่อหาเส้นทาง
-    // OSRM ใช้ format: longitude,latitude (สลับกับ Google)
-    final String url =
-        'http://router.project-osrm.org/route/v1/driving/'
-        '${startCoords.longitude},${startCoords.latitude};'
-        '${endCoords.longitude},${endCoords.latitude}'
-        '?overview=full&geometries=geojson';
+    // หาเส้นที่ start end อยู่สายเดียวกัน
+    int? matchedRoute;
 
-    try {
-      final response = await http.get(Uri.parse(url));
+    routes.forEach((id, route) {
+      final ds = _distanceToRoute(start, route);
+      final de = _distanceToRoute(end, route);
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(response.body);
-
-        if (data['routes'] == null || (data['routes'] as List).isEmpty) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('ไม่พบเส้นทาง')));
-          return;
-        }
-
-        // ดึงจุด Coordinates จาก GeoJSON
-        final route = data['routes'][0];
-        final geometry = route['geometry'];
-        final List<dynamic> coordinates = geometry['coordinates'];
-
-        // แปลงเป็น List<LatLng> ของ flutter_map
-        List<LatLng> routePoints = coordinates.map((coord) {
-          return LatLng(coord[1].toDouble(), coord[0].toDouble());
-        }).toList();
-
-        // 3. อัปเดต State วาดเส้นและหมุด
-        setState(() {
-          // เคลียร์ของเก่า
-          _polylines.clear();
-          _markers.clear();
-
-          // เพิ่มเส้น
-          _polylines.add(
-            Polyline(
-              points: routePoints,
-              strokeWidth: 5.0,
-              color: Colors.blueAccent,
-            ),
-          );
-
-          // เพิ่มหมุดต้นทาง
-          _markers.add(
-            Marker(
-              point: startCoords,
-              width: 60,
-              height: 60,
-              child: const Icon(
-                Icons.my_location,
-                color: Colors.blue,
-                size: 40,
-              ),
-            ),
-          );
-
-          // เพิ่มหมุดปลายทาง
-          _markers.add(
-            Marker(
-              point: endCoords,
-              width: 60,
-              height: 60,
-              child: const Icon(Icons.location_on, color: Colors.red, size: 40),
-            ),
-          );
-        });
-
-        // 4. ซูมแผนที่ให้เห็นทั้งเส้น
-        // ใช้ bounds จากจุดทั้งหมด
-        LatLngBounds bounds = LatLngBounds.fromPoints(routePoints);
-        // ขยายขอบเล็กน้อยเพื่อให้สวยงาม
-        _mapController.fitCamera(
-          CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
-        );
-      } else {
-        print("Error calling OSRM API: ${response.statusCode}");
+      if (ds < 400 && de < 400) {
+        // เมตร
+        matchedRoute = id;
       }
-    } catch (e) {
-      print("Error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('เกิดข้อผิดพลาดในการเชื่อมต่อ')),
-      );
+    });
+
+    if (matchedRoute == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('ต้องเปลี่ยนสายรถ')));
+      return;
     }
+
+    // ใช้เฉพาะสายนี้
+    final route = routes[matchedRoute]!;
+
+    // ตัดเส้นจาก A → B
+    final idxA = _nearestIndex(start, route);
+    final idxB = _nearestIndex(end, route);
+
+    final path = idxA <= idxB
+        ? route.sublist(idxA, idxB + 1)
+        : route.sublist(idxB, idxA + 1).reversed.toList();
+
+    // 5) วาด
+    setState(() {
+      _polylines.clear();
+      _markers.clear();
+
+      _polylines.add(
+        Polyline(points: path, strokeWidth: 5, color: Colors.blueAccent),
+      );
+
+      _markers.add(
+        Marker(
+          point: start,
+          width: 40,
+          height: 40,
+          child: const Icon(Icons.my_location, color: Colors.blue),
+        ),
+      );
+
+      _markers.add(
+        Marker(
+          point: end,
+          width: 40,
+          height: 40,
+          child: const Icon(Icons.location_on, color: Colors.red),
+        ),
+      );
+    });
+
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(path),
+
+        padding: const EdgeInsets.all(40),
+      ),
+    );
   }
 
   // Helper: ดึงพิกัดจาก Firestore (เหมือนเดิม แต่ Return LatLng ของ OSM)
